@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --animate-breathe: breathe 2.4s ease-in-out infinite;
+}
+
+html,
+body {
+  background: #0a0a0a;
+  color: #fff;
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: rgb(255 255 255 / 0.25);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.lyrics-mask {
+  contain: paint;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 82%, transparent 100%);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+
+/* The YouTube iframe fills its mount. */
+.yt-mount iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
