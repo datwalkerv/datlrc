@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { SyncEditor } from "./SyncEditor";
 
 export const metadata: Metadata = {
@@ -14,7 +15,10 @@ export default function SyncPage() {
         <p className="mt-2 max-w-xl text-white/55">
           Pick the song, paste its lyrics, then press Space as each line starts. Preview it, and publish it for everyone.
         </p>
-        <SyncEditor />
+        {/* It reads the URL (a "Needs lyrics" card prefills the search), so it renders per request. */}
+        <Suspense fallback={<div className="mt-10 h-[68px] max-w-2xl rounded-3xl bg-white/[0.04] ring-1 ring-white/10" />}>
+          <SyncEditor />
+        </Suspense>
       </div>
     </main>
   );

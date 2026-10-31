@@ -2,12 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { cacheLife, cacheTag } from "next/cache";
 import { ObjectId } from "mongodb";
 import { findArtwork } from "./artwork-source";
-import { apikeys, ensureIndexes, lyrics, ratelimit, type LyricsDoc } from "./db";
+import { apikeys, ensureIndexes, lyrics, needs, ratelimit, type LyricsDoc } from "./db";
 import { KEYED } from "./http";
-import { norm, pickOwn, slugFor, type LrcRecord, type Submission } from "./record";
-
-const LRCLIB = "https://lrclib.net/api";
-const UA = "datlrc/0.1 (https://github.com/datwalkerv/datlrc)";
+import { norm, pickOwn, slugFor, type LrcRecord, type NeedReport, type Submission } from "./record";
 
 export const toRecord = (d: LyricsDoc): LrcRecord => ({
   id: `lrc_${d._id.toHexString()}`,
@@ -26,17 +23,41 @@ export function parseId(id: string): ObjectId | null {
   return /^[a-f\d]{24}$/.test(hex) ? new ObjectId(hex) : null;
 }
 
-export async function lrclib<T>(path: string, params: Record<string, string>): Promise<T | null> {
-  "use cache";
-  cacheLife("days");
+/** Counts a report of a song nobody has synced (from datlyrics), so it shows on the home page for contributors. */
+export async function recordNeed(n: NeedReport) {
+  await ensureIndexes();
+  const now = new Date();
+  // A later report fills in details an earlier one lacked (album, cover, video), never blanks them.
+  const known = Object.fromEntries(Object.entries({ albumName: n.albumName, artworkUrl: n.artworkUrl, videoId: n.videoId }).filter(([, v]) => v));
+  const unknown = Object.fromEntries(["albumName", "artworkUrl", "videoId"].filter((k) => !(k in known)).map((k) => [k, null]));
+  await needs.updateOne(
+    { artistKey: norm(n.artistName), trackKey: norm(n.trackName) },
+    {
+      $setOnInsert: { artistName: n.artistName, trackName: n.trackName, duration: n.duration, createdAt: now, ...unknown },
+      $inc: { requests: 1 },
+      $set: { lastRequestedAt: now, ...known },
+    },
+    { upsert: true },
+  );
+}
 
-  const res = await fetch(`${LRCLIB}${path}?${new URLSearchParams(params)}`, {
-    headers: { "User-Agent": UA, "Lrclib-Client": UA },
-  });
-  if (res.status === 404) return null;
-  // Throw on other failures so a transient outage isn't cached as "no lyrics".
-  if (!res.ok) throw new Error(`LRCLIB ${path} ${res.status}`);
-  return (await res.json()) as T;
+export type NeedView = Omit<NeedReport, "duration"> & { id: string; requests: number };
+
+export async function needsLyrics(limit = 12): Promise<NeedView[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("needs");
+
+  const docs = await needs.find({}).sort({ requests: -1, lastRequestedAt: -1 }).limit(limit).toArray();
+  return docs.map((d) => ({
+    id: d._id.toHexString(),
+    trackName: d.trackName,
+    artistName: d.artistName,
+    albumName: d.albumName ?? null,
+    artworkUrl: d.artworkUrl ?? null,
+    videoId: d.videoId ?? null,
+    requests: d.requests,
+  }));
 }
 
 export async function findOwn(artist: string, title: string, duration: number): Promise<LyricsDoc | null> {
@@ -97,7 +118,7 @@ export async function leaderboard(limit = 50): Promise<LeaderboardRow[]> {
 }
 
 export async function recentLyrics(
-  limit = 6,
+  limit = 12,
 ): Promise<(Pick<LyricsDoc, "trackName" | "artistName" | "artworkUrl"> & { slug: string; synced: boolean })[]> {
   "use cache";
   cacheLife("hours");
@@ -183,5 +204,7 @@ export async function insertLyrics(s: Submission, ipHash: string): Promise<Lyric
     ipHash,
   };
   await lyrics.insertOne(doc);
+  // Someone covered a wanted song: it leaves the "Needs lyrics" shelf.
+  if (doc.syncedLyrics) await needs.deleteMany({ artistKey: doc.artistKey, trackKey: doc.trackKey }).catch(() => {});
   return doc;
 }

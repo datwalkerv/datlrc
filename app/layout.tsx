@@ -74,10 +74,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <a href={DATLYRICS_URL} className="underline-offset-4 hover:text-white/60 hover:underline">
               datlyrics
             </a>{" "}
-            · More lyrics from{" "}
-            <a href="https://lrclib.net" target="_blank" rel="noreferrer" className="underline-offset-4 hover:text-white/60 hover:underline">
-              LRCLIB
-            </a>{" "}
             ·{" "}
             <Link href="/api-docs" className="underline-offset-4 hover:text-white/60 hover:underline">
               API

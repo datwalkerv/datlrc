@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { recentLyrics } from "@/lib/library";
+import { needsLyrics, recentLyrics } from "@/lib/library";
 import { LibrarySearch } from "@/components/LibrarySearch";
 
 export default function Home() {
@@ -30,6 +30,10 @@ export default function Home() {
         </div>
       </section>
 
+      <Suspense fallback={null}>
+        <Needs />
+      </Suspense>
+
       <section className="px-5 pb-20" aria-labelledby="recent">
         <div className="mx-auto max-w-6xl">
           <h2 id="recent" className="text-xs font-medium uppercase tracking-[0.2em] text-white/30 max-sm:text-center">
@@ -45,7 +49,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-6xl gap-px overflow-hidden rounded-3xl bg-white/10 ring-1 ring-white/10 sm:grid-cols-3">
           {[
             ["Tap to sync", "Play the song, press Space as each line starts. Nudge, preview karaoke-style, publish."],
-            ["Free API", "LRCLIB-compatible endpoints with a free key. Falls back to LRCLIB when we don't have a song yet."],
+            ["Free API", "Every synced lyric in the library, through a simple JSON API with a free key."],
             ["Sing along", "Every song links straight to datlyrics, the synced lyrics player for the big screen."],
           ].map(([title, body]) => (
             <div key={title} className="bg-neutral-950 p-7">
@@ -66,39 +70,81 @@ async function Recent() {
   const items = await recentLyrics().catch(() => []);
   if (!items.length) return <p className="mt-6 text-white/40 max-sm:text-center">Nothing yet. Be the first to sync a song.</p>;
   return (
-    <ul className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+    <Shelf
+      items={items.map((r) => ({
+        key: r.slug,
+        href: `/lyrics/${r.slug}`,
+        art: r.artworkUrl,
+        title: r.trackName,
+        artist: r.artistName,
+        badge: r.synced ? "Synced" : null,
+      }))}
+    />
+  );
+}
+
+/** Songs nobody has synced lyrics for yet, most wanted first; each opens the sync editor. */
+async function Needs() {
+  await connection();
+  const items = await needsLyrics().catch(() => []);
+  if (!items.length) return null;
+  return (
+    <section className="px-5 pb-14" aria-labelledby="needs">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 max-sm:justify-center">
+          <h2 id="needs" className="text-xs font-medium uppercase tracking-[0.2em] text-white/30">
+            Needs lyrics
+          </h2>
+          <p className="text-sm text-white/40">People want to sing these, but nobody has synced them yet. Pick one and be the first.</p>
+        </div>
+        <Shelf
+          items={items.map((n) => ({
+            key: n.id,
+            // The video datlyrics played opens straight in the editor; without one, the search is prefilled.
+            href: `/sync?${new URLSearchParams({
+              ...(n.videoId ? { v: n.videoId } : { q: `${n.artistName} ${n.trackName}` }),
+              track: n.trackName,
+              artist: n.artistName,
+              ...(n.albumName && { album: n.albumName }),
+            })}`,
+            art: n.artworkUrl,
+            title: n.trackName,
+            artist: n.artistName,
+            album: n.albumName,
+            badge: n.requests > 1 ? `${n.requests}× wanted` : null,
+          }))}
+        />
+      </div>
+    </section>
+  );
+}
+
+type ShelfItem = { key: string; href: string; art: string | null; title: string; artist: string; album?: string | null; badge: string | null };
+
+/** A row of covers: six across on desktop, scrolling sideways when there are more. */
+function Shelf({ items }: { items: ShelfItem[] }) {
+  return (
+    <ul className="no-scrollbar -mx-5 mt-6 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-px-5 px-5 pb-2">
       {items.map((r) => (
-        <li key={r.slug}>
-          <Link href={`/lyrics/${r.slug}`} className="group block">
+        <li key={r.key} className="w-[42%] shrink-0 snap-start sm:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-5rem)/6)]">
+          <Link href={r.href} className="group block">
             <span className="relative block aspect-square overflow-hidden rounded-2xl bg-white/[0.06] shadow-lg shadow-black/40 ring-1 ring-white/10">
-              {r.artworkUrl && (
+              {r.art && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={r.artworkUrl}
-                  alt=""
-                  loading="lazy"
-                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                />
+                <img src={r.art} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
               )}
-              {r.synced && (
-                <span className="absolute left-2 top-2">
-                  <SyncedBadge />
+              {r.badge && (
+                <span className="absolute left-2 top-2 rounded-full bg-neutral-950/60 px-2 py-0.5 text-[11px] font-semibold text-white/85 ring-1 ring-white/15 backdrop-blur-md">
+                  {r.badge}
                 </span>
               )}
             </span>
-            <span className="mt-2.5 block truncate text-sm font-semibold">{r.trackName}</span>
-            <span className="block truncate text-sm text-white/50">{r.artistName}</span>
+            <span className="mt-2.5 block truncate text-sm font-semibold">{r.title}</span>
+            <span className="block truncate text-sm text-white/50">{r.artist}</span>
+            {r.album && <span className="block truncate text-xs text-white/30">{r.album}</span>}
           </Link>
         </li>
       ))}
     </ul>
-  );
-}
-
-function SyncedBadge() {
-  return (
-    <span className="shrink-0 rounded-full bg-neutral-950/60 px-2 py-0.5 text-[11px] font-semibold text-white/85 ring-1 ring-white/15 backdrop-blur-md">
-      Synced
-    </span>
   );
 }

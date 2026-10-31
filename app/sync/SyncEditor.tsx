@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { SyncedLyrics } from "@/components/SyncedLyrics";
@@ -11,7 +11,8 @@ import { parseYouTubeUrl } from "@/lib/parse-youtube-url";
 import type { LrcRecord } from "@/lib/record";
 import type { SearchResult } from "@/lib/search-source";
 
-type Video = { id: string; title: string; channel: string };
+/** `track`/`artist` come from a "Needs lyrics" card and beat guessing from the video title. */
+type Video = { id: string; title: string; channel: string; track?: string; artist?: string; album?: string };
 type Line = { text: string; time: number | null };
 type Tab = "lyrics" | "sync" | "preview";
 
@@ -23,12 +24,24 @@ const RATES = [0.5, 0.75, 1];
 const NAME_KEY = "datlrc:contributor";
 
 export function SyncEditor() {
-  const [video, setVideo] = useState<Video | null>(null);
-  return video ? <Editor key={video.id} video={video} onChange={() => setVideo(null)} /> : <SongPicker onPick={setVideo} />;
+  const sp = useSearchParams();
+  const known = {
+    track: sp.get("track")?.slice(0, 200) || undefined,
+    artist: sp.get("artist")?.slice(0, 200) || undefined,
+    album: sp.get("album")?.slice(0, 200) || undefined,
+  };
+  // A "Needs lyrics" card links the exact video datlyrics played: open the editor on it right away.
+  const v = sp.get("v");
+  const [video, setVideo] = useState<Video | null>(v && /^[\w-]{11}$/.test(v) ? { id: v, title: "", channel: "", ...known } : null);
+  return video ? (
+    <Editor key={video.id} video={video} onChange={() => setVideo(null)} />
+  ) : (
+    <SongPicker initialQuery={sp.get("q")?.slice(0, 200) ?? ""} onPick={(v) => setVideo({ ...v, ...known })} />
+  );
 }
 
-function SongPicker({ onPick }: { onPick: (v: Video) => void }) {
-  const [query, setQuery] = useState("");
+function SongPicker({ initialQuery, onPick }: { initialQuery: string; onPick: (v: Video) => void }) {
+  const [query, setQuery] = useState(initialQuery);
   const [data, setData] = useState<{ q: string; results: SearchResult[]; failed: boolean } | null>(null);
   const q = query.trim();
   const link = parseYouTubeUrl(q);
@@ -106,18 +119,22 @@ function Editor({ video, onChange }: { video: Video; onChange: () => void }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { state, clock, controls } = useYouTubePlayer(mountRef, video.id);
-  const guess = video.title ? cleanTitle(video.title, video.channel) : { artist: "", title: "" };
+  const guess = video.track
+    ? { title: video.track, artist: video.artist ?? "" }
+    : video.title
+      ? cleanTitle(video.title, video.channel)
+      : { artist: "", title: "" };
   const [trackName, setTrackName] = useState(guess.title);
   const [artistName, setArtistName] = useState(guess.artist);
-  const [albumName, setAlbumName] = useState("");
-  // The editor only renders client-side (after picking a video), so reading storage here is safe.
-  const [contributor, setContributor] = useState(() => {
+  const [albumName, setAlbumName] = useState(video.album ?? "");
+  const [contributor, setContributor] = useState("");
+  // Read after mount: a "Needs lyrics" link renders the editor on the server, where storage doesn't exist.
+  useEffect(() => {
     try {
-      return localStorage.getItem(NAME_KEY) ?? "";
-    } catch {
-      return "";
-    }
-  });
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable after mount
+      setContributor(localStorage.getItem(NAME_KEY) ?? "");
+    } catch {}
+  }, []);
   const [text, setText] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [cursor, setCursor] = useState(0);

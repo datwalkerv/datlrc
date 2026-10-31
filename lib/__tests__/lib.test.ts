@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatLrcTime, parseLrc, parseLrcTags, toLrc } from "../lrc";
-import { idFromSlug, pickLoose, pickOwn, slugFor, validateSubmission } from "../record";
+import { idFromSlug, pickLoose, pickOwn, slugFor, validateNeed, validateSubmission } from "../record";
 
 describe("lrc", () => {
   it("formats LRC times", () => {
@@ -27,15 +27,14 @@ describe("lrc", () => {
 });
 
 describe("validateSubmission", () => {
-  const ok = { trackName: "Song", artistName: "Artist", duration: 200, plainLyrics: "a\nb" };
+  const ok = { trackName: "Song", artistName: "Artist", duration: 200, syncedLyrics: "[00:01.00]a\n[00:02.00]b" };
 
-  it("accepts a plain submission and normalises it", () => {
-    expect(validateSubmission({ ...ok, duration: 199.6, albumName: " " })).toMatchObject({ duration: 200, albumName: null, syncedLyrics: null, videoId: null });
+  it("accepts a synced submission, normalises it and derives the plain text", () => {
+    expect(validateSubmission({ ...ok, duration: 199.6, albumName: " " })).toMatchObject({ duration: 200, albumName: null, videoId: null, plainLyrics: "a\nb" });
   });
 
-  it("derives plain lyrics from synced ones", () => {
-    const s = validateSubmission({ ...ok, plainLyrics: "", syncedLyrics: "[00:01.00]a\n[00:02.00]b" });
-    expect(typeof s !== "string" && s.plainLyrics).toBe("a\nb");
+  it("rejects plain-only lyrics: the library is synced only", () => {
+    expect(validateSubmission({ ...ok, syncedLyrics: "", plainLyrics: "a\nb" })).toMatch(/syncedLyrics are required/);
   });
 
   it("rejects bad input", () => {
@@ -48,7 +47,7 @@ describe("validateSubmission", () => {
     expect(validateSubmission({ ...ok, plainLyrics: "x".repeat(20_001) })).toMatch(/20000/);
     expect(validateSubmission({ ...ok, syncedLyrics: "no tags" })).toMatch(/timed/);
     expect(validateSubmission({ ...ok, syncedLyrics: "[05:00.00]late" })).toMatch(/past/);
-    expect(validateSubmission({ ...ok, plainLyrics: "" })).toMatch(/lyrics are required/);
+    expect(validateSubmission({ ...ok, syncedLyrics: "" })).toMatch(/syncedLyrics are required/);
   });
 
   it("cleans up the contributor name", () => {
@@ -59,7 +58,7 @@ describe("validateSubmission", () => {
   });
 
   it("allows instrumentals without lyrics", () => {
-    expect(validateSubmission({ ...ok, plainLyrics: "", instrumental: true })).toMatchObject({ instrumental: true, plainLyrics: null });
+    expect(validateSubmission({ ...ok, syncedLyrics: "", instrumental: true })).toMatchObject({ instrumental: true, plainLyrics: null, syncedLyrics: null });
   });
 });
 
@@ -113,3 +112,28 @@ describe("pickLoose", () => {
     expect(pickLoose(docs.slice(2), "Beyoncé", "Halo", 200)).toBeNull();
   });
 });
+
+describe("validateNeed", () => {
+  const ok = { trackName: "Song", artistName: "Artist", duration: 200.4 };
+
+  it("accepts a report with album, cover and video", () => {
+    const cover = "https://is1-ssl.mzstatic.com/image/thumb/Music/x/1000x1000bb.jpg";
+    expect(validateNeed({ ...ok, albumName: "Album", artworkUrl: cover, videoId: "dQw4w9WgXcQ" })).toEqual({
+      trackName: "Song",
+      artistName: "Artist",
+      albumName: "Album",
+      duration: 200,
+      artworkUrl: cover,
+      videoId: "dQw4w9WgXcQ",
+    });
+    expect(validateNeed({ ...ok, artworkUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" })).toMatchObject({ albumName: null, videoId: null });
+  });
+
+  it("rejects missing names, bad videos and covers from other hosts", () => {
+    expect(validateNeed({ ...ok, trackName: "" })).toMatch(/required/);
+    expect(validateNeed({ ...ok, videoId: "nope" })).toMatch(/videoId/);
+    for (const artworkUrl of ["http://is1-ssl.mzstatic.com/a.jpg", "https://evil.example/a.jpg", "https://mzstatic.com.evil.example/a.jpg", "javascript:alert(1)"])
+      expect(validateNeed({ ...ok, artworkUrl })).toMatch(/artworkUrl/);
+  });
+});
+

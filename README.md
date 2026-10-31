@@ -14,7 +14,8 @@ An open library of synced lyrics, made to feed [datlyrics](https://lyrics.datwal
 
 - **🎤 Tap-to-sync editor** (`/sync`): pick a YouTube song, paste the lyrics, and press Space as each line starts. Preview it karaoke-style, then publish.
 - **📄 A page for every song** (`/lyrics/<artist>-<title>-<id>`): clean lyrics on the song's cover colors, a "Sing along on datlyrics" link and an `.lrc` download.
-- **🔌 Free API**: LRCLIB-compatible, with CORS open. Callers need a free key from the "Generate API key" button on `/api-docs`; datlrc's own pages don't. It falls back to LRCLIB for songs not in the library yet. See `/api-docs`.
+- **🔌 Free API**: every synced lyric in the library as JSON, with CORS open. Callers need a free key from the "Generate API key" button on `/api-docs`; datlrc's own pages don't. See `/api-docs`.
+- **🙋 Needs lyrics**: [datlyrics](https://lyrics.datwalkerv.app) reports songs it found no synced lyrics for, with their cover, album and video, through `POST /api/needs`. They show up on the home page, most wanted first; a card opens the sync editor on that video. A song leaves the list once someone publishes it.
 - **🔑 No accounts**: publishing is limited to 10 per hour per IP, and only a salted hash of the IP is stored.
 
 ## 🛠️ Setup

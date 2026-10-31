@@ -1,13 +1,18 @@
 import type { Metadata } from "next";
 import { ApiKey } from "@/components/ApiKey";
 
-export const metadata: Metadata = { title: "API · datlrc", description: "Free, LRCLIB-compatible synced lyrics API." };
+export const metadata: Metadata = { title: "API · datlrc", description: "Free synced lyrics API." };
 
 const ENDPOINTS: [string, string, string][] = [
-  ["GET", "/api/get?artist_name=&track_name=&duration=", "Best match for a song: our own lyrics within 2 seconds of the duration, otherwise LRCLIB's. 404 if neither has it."],
-  ["GET", "/api/get/{id}", "One record. Ids starting with lrc_ are ours, plain numbers are LRCLIB's."],
-  ["GET", "/api/search?q=", "Our matches first, then LRCLIB's. Also takes track_name and artist_name. Add own=1 for ours only."],
-  ["POST", "/api/publish", "JSON with trackName, artistName, duration, and plainLyrics and/or syncedLyrics. albumName, videoId and instrumental are optional. Up to 10 per hour per IP."],
+  ["GET", "/api/get?artist_name=&track_name=&duration=", "Best match in the library: the same song within 2 seconds of the duration, else a close synced match. 404 if we don't have it."],
+  ["GET", "/api/get/{id}", "One record by its lrc_ id."],
+  ["GET", "/api/search?q=", "Songs in the library. Also takes track_name and artist_name."],
+  [
+    "POST",
+    "/api/needs",
+    "Report a song with no synced lyrics, so it shows on the Needs lyrics shelf. JSON with trackName, artistName and duration; albumName, videoId (YouTube) and artworkUrl (an iTunes or YouTube image) are optional. Repeat reports count up.",
+  ],
+  ["POST", "/api/publish", "JSON with trackName, artistName, duration and syncedLyrics (LRC). albumName, videoId and contributor are optional; instrumental: true needs no lyrics. Up to 10 per hour per IP."],
 ];
 
 const EXAMPLE = `{
@@ -27,8 +32,7 @@ export default function ApiDocs() {
       <div className="mx-auto max-w-4xl">
         <h1 className="text-[clamp(2.25rem,5vw,3.5rem)] font-extrabold leading-tight tracking-[-0.04em]">API</h1>
         <p className="mt-3 max-w-2xl text-lg text-white/55">
-          Free, with CORS open. Generate a key below and send it as the <code className="font-mono text-white/80">x-api-key</code> header. The responses
-          use LRCLIB&apos;s shape, so an LRCLIB client only has to change its base URL and add the header.
+          Free, with CORS open. Generate a key below and send it as the <code className="font-mono text-white/80">x-api-key</code> header.
         </p>
         <ApiKey />
         <dl className="mt-10 flex flex-col gap-px overflow-hidden rounded-3xl bg-white/10 ring-1 ring-white/10">

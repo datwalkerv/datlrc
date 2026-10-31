@@ -1,7 +1,7 @@
 import { withoutFeat } from "./clean-title";
 import { parseLrc } from "./lrc";
 
-/** LRCLIB's record shape, so clients can switch base URLs. Our own ids are "lrc_<objectId>". */
+/** A lyrics record as the API returns it. Ids are "lrc_<objectId>". */
 export type LrcRecord = {
   id: number | string;
   trackName: string;
@@ -72,7 +72,8 @@ export function validateSubmission(body: unknown): Submission | string {
     if (lines.at(-1)!.time > duration + 1) return "syncedLyrics runs past the song's duration";
     plainLyrics ??= lines.map((l) => l.text).join("\n").trim() || null;
   }
-  if (!instrumental && !plainLyrics) return "lyrics are required unless the song is instrumental";
+  // A synced lyrics library: words without timing aren't accepted (an instrumental has no words to time).
+  if (!instrumental && !syncedLyrics) return "syncedLyrics are required unless the song is instrumental";
 
   return {
     trackName,
@@ -106,24 +107,70 @@ export function pickOwn<T extends { duration: number; syncedLyrics: string | nul
   );
 }
 
+/** Either name contains the other, after `norm()` ("Song (Remastered)" matches "Song"). */
+const near = (x: string, y: string) => !!x && !!y && (x.includes(y) || y.includes(x));
+const sameSong = (r: { trackName: string; artistName: string }, artist: string, title: string) =>
+  near(norm(r.trackName), norm(title)) && near(norm(r.artistName), norm(artist));
+
 /**
- * Fallback for when LRCLIB is down: our closest synced record by name (either title containing
- * the other), up to 45s off in length, closest length first. Plain-only records don't count, so a
- * caller never caches them as the final answer while LRCLIB's synced lyrics are unreachable.
+ * The closest synced record by name, up to 45s off in length (any length when `duration` is 0),
+ * closest length first. Plain-only records don't count.
  */
-export function pickLoose<T extends { trackName: string; artistName: string; duration: number; syncedLyrics: string | null; createdAt: Date }>(
+export function pickLoose<T extends { trackName: string; artistName: string; duration: number; syncedLyrics: string | null; createdAt?: Date }>(
   docs: T[],
   artist: string,
   title: string,
   duration: number,
 ): T | null {
-  const a = norm(artist);
-  const t = norm(title);
-  const near = (x: string, y: string) => !!x && !!y && (x.includes(y) || y.includes(x));
   const off = (d: T) => (duration > 0 ? Math.abs(d.duration - duration) : 0);
   return (
     docs
-      .filter((d) => d.syncedLyrics && near(norm(d.trackName), t) && near(norm(d.artistName), a) && off(d) <= 45)
-      .toSorted((x, y) => off(x) - off(y) || +y.createdAt - +x.createdAt)[0] ?? null
+      .filter((d) => d.syncedLyrics && sameSong(d, artist, title) && off(d) <= 45)
+      .toSorted((x, y) => off(x) - off(y) || +(y.createdAt ?? 0) - +(x.createdAt ?? 0))[0] ?? null
   );
+}
+
+/** A song reported to the "Needs lyrics" shelf, as datlyrics sends it. */
+export type NeedReport = {
+  trackName: string;
+  artistName: string;
+  albumName: string | null;
+  duration: number;
+  artworkUrl: string | null;
+  videoId: string | null;
+};
+
+// Covers are shown on the home page, so only the image hosts datlyrics uses (iTunes, YouTube) are accepted.
+const ARTWORK_HOST = /^(?:[\w-]+\.)*mzstatic\.com$|^i\.ytimg\.com$/;
+
+/** Checks a needs report from the outside world. Returns the clean report or an error message. */
+export function validateNeed(body: unknown): NeedReport | string {
+  if (!body || typeof body !== "object") return "body must be a JSON object";
+  const b = body as Record<string, unknown>;
+  const str = (k: string) => (typeof b[k] === "string" ? (b[k] as string).trim() : "");
+
+  const trackName = str("trackName");
+  const artistName = str("artistName");
+  const albumName = str("albumName") || null;
+  if (!trackName || !artistName) return "trackName and artistName are required";
+  if (trackName.length > MAX_NAME || artistName.length > MAX_NAME || (albumName?.length ?? 0) > MAX_NAME)
+    return `names must be at most ${MAX_NAME} characters`;
+
+  const duration = Number(b.duration ?? 0);
+  if (!Number.isFinite(duration) || duration < 0 || duration > 3600) return "duration must be 0–3600 seconds";
+
+  const videoId = str("videoId") || null;
+  if (videoId !== null && !/^[\w-]{11}$/.test(videoId)) return "videoId is not a YouTube video id";
+
+  const artworkUrl = str("artworkUrl") || null;
+  if (artworkUrl !== null) {
+    let url: URL | null = null;
+    try {
+      url = new URL(artworkUrl);
+    } catch {}
+    if (!url || url.protocol !== "https:" || !ARTWORK_HOST.test(url.hostname) || artworkUrl.length > 500)
+      return "artworkUrl must be an https iTunes (mzstatic.com) or YouTube (i.ytimg.com) image";
+  }
+
+  return { trackName, artistName, albumName, duration: Math.round(duration), artworkUrl, videoId };
 }

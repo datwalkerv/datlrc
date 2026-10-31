@@ -24,6 +24,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "too many submissions, try again in an hour" }, { status: 429 });
     const doc = await insertLyrics(s, ipHash);
     revalidateTag("lyrics", "max");
+    if (doc.syncedLyrics) revalidateTag("needs", "max");
     return Response.json({ ...toRecord(doc), slug: slugFor(doc) }, { status: 201, headers: KEYED });
   } catch {
     return Response.json({ error: "could not save, try again" }, { status: 503 });

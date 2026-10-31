@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { LrcRecord } from "@/lib/record";
 
-/** Searches our own library (not LRCLIB): these are the songs with a page here. */
+/** Searches the library: every result has a page here. */
 export function LibrarySearch() {
   const [query, setQuery] = useState("");
   const [data, setData] = useState<{ q: string; results: LrcRecord[] } | null>(null);
@@ -14,7 +14,7 @@ export function LibrarySearch() {
     if (q.length < 2) return;
     const ctrl = new AbortController();
     const t = setTimeout(() => {
-      fetch(`/api/search?${new URLSearchParams({ q, own: "1" })}`, { signal: ctrl.signal })
+      fetch(`/api/search?${new URLSearchParams({ q })}`, { signal: ctrl.signal })
         .then((r) => (r.ok ? (r.json() as Promise<LrcRecord[]>) : []))
         .then((results) => setData({ q, results }))
         .catch((e) => {
