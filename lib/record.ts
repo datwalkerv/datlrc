@@ -105,3 +105,25 @@ export function pickOwn<T extends { duration: number; syncedLyrics: string | nul
     fits.toSorted((a, b) => Number(!!b.syncedLyrics) - Number(!!a.syncedLyrics) || +b.createdAt - +a.createdAt)[0] ?? null
   );
 }
+
+/**
+ * Fallback for when LRCLIB is down: our closest synced record by name (either title containing
+ * the other), up to 45s off in length, closest length first. Plain-only records don't count, so a
+ * caller never caches them as the final answer while LRCLIB's synced lyrics are unreachable.
+ */
+export function pickLoose<T extends { trackName: string; artistName: string; duration: number; syncedLyrics: string | null; createdAt: Date }>(
+  docs: T[],
+  artist: string,
+  title: string,
+  duration: number,
+): T | null {
+  const a = norm(artist);
+  const t = norm(title);
+  const near = (x: string, y: string) => !!x && !!y && (x.includes(y) || y.includes(x));
+  const off = (d: T) => (duration > 0 ? Math.abs(d.duration - duration) : 0);
+  return (
+    docs
+      .filter((d) => d.syncedLyrics && near(norm(d.trackName), t) && near(norm(d.artistName), a) && off(d) <= 45)
+      .toSorted((x, y) => off(x) - off(y) || +y.createdAt - +x.createdAt)[0] ?? null
+  );
+}

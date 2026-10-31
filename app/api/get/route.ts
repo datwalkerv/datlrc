@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
-import { authorize, findOwn, lrclib, toRecord } from "@/lib/library";
+import { authorize, findOwn, lrclib, searchOwn, toRecord } from "@/lib/library";
 import { notFound, KEYED, preflight } from "@/lib/http";
-import type { LrcRecord } from "@/lib/record";
+import { pickLoose, type LrcRecord } from "@/lib/record";
 
 /** LRCLIB-compatible /get: our own submissions first, then LRCLIB. */
 export async function GET(req: NextRequest) {
@@ -18,7 +18,13 @@ export async function GET(req: NextRequest) {
     if (own) return Response.json(toRecord(own), { headers: KEYED });
     const params: Record<string, string> = { artist_name: artist, track_name: title };
     if (duration) params.duration = String(Math.round(duration));
-    const r = await lrclib<LrcRecord>("/get", params);
+    const r = await lrclib<LrcRecord>("/get", params).catch(async (e) => {
+      // LRCLIB is down: answer from a looser look at our own songs, or stay an error (never a
+      // 404) so callers don't cache "no lyrics" for an outage.
+      const loose = pickLoose(await searchOwn(`${artist} ${title}`), artist, title, duration);
+      if (!loose) throw e;
+      return toRecord(loose);
+    });
     return r ? Response.json(r, { headers: KEYED }) : notFound();
   } catch {
     return Response.json({ error: "lyrics lookup failed" }, { status: 502 });

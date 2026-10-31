@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatLrcTime, parseLrc, parseLrcTags, toLrc } from "../lrc";
-import { idFromSlug, pickOwn, slugFor, validateSubmission } from "../record";
+import { idFromSlug, pickLoose, pickOwn, slugFor, validateSubmission } from "../record";
 
 describe("lrc", () => {
   it("formats LRC times", () => {
@@ -88,5 +88,28 @@ describe("pickOwn", () => {
     expect(pickOwn(docs, 200)?.id).toBe("synced-new");
     expect(pickOwn(docs, 300)).toBeNull();
     expect(pickOwn(docs, 0)?.id).toBe("too-long");
+  });
+});
+
+describe("pickLoose", () => {
+  const doc = (id: string, trackName: string, duration: number, synced = true) => ({
+    id,
+    trackName,
+    artistName: "Beyoncé",
+    duration,
+    syncedLyrics: synced ? "[00:01.00]a" : null,
+    createdAt: new Date(2026, 0, 1),
+  });
+
+  it("matches looser names and lengths, closest length first", () => {
+    const docs = [doc("far", "Crazy in Love", 240), doc("close", "Crazy in Love (Remastered)", 230), doc("plain", "Crazy in Love", 225, false)];
+    expect(pickLoose(docs, "beyonce", "Crazy in Love feat. Jay-Z", 225)?.id).toBe("close");
+  });
+
+  it("skips plain-only records, other songs and lengths over 45s off", () => {
+    const docs = [doc("plain", "Halo", 200, false), doc("other", "Halo", 200), doc("long", "Halo", 300)];
+    expect(pickLoose(docs.slice(0, 1), "Beyoncé", "Halo", 200)).toBeNull();
+    expect(pickLoose(docs.slice(1, 2), "Beyoncé", "Single Ladies", 200)).toBeNull();
+    expect(pickLoose(docs.slice(2), "Beyoncé", "Halo", 200)).toBeNull();
   });
 });

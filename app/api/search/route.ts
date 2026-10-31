@@ -18,8 +18,8 @@ export async function GET(req: NextRequest) {
     const own = (await searchOwn(q || `${track} ${artist}`)).map(toRecord);
     if (sp.get("own") === "1") return Response.json(own, { headers: KEYED });
     const params: Record<string, string> = q ? { q } : { track_name: track, ...(artist && { artist_name: artist }) };
-    // LRCLIB being down shouldn't hide our own results.
-    const theirs = (await lrclib<LrcRecord[]>("/search", params).catch(() => null)) ?? [];
+    // If LRCLIB is down this throws: a partial 200 would let callers cache an incomplete answer.
+    const theirs = (await lrclib<LrcRecord[]>("/search", params)) ?? [];
     return Response.json([...own, ...theirs], { headers: KEYED });
   } catch {
     return Response.json({ error: "search failed" }, { status: 502 });
