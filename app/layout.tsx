@@ -29,6 +29,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </Link>
           <nav className="flex items-center gap-2">
             <Link
+              href="/needs"
+              className="rounded-full px-3 py-2 text-sm font-medium text-white/50 transition hover:bg-white/10 hover:text-white"
+            >
+              Needs
+            </Link>
+            <Link
               href="/leaderboard"
               className="rounded-full px-3 py-2 text-sm font-medium text-white/50 transition hover:bg-white/10 hover:text-white"
             >

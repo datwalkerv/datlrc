@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { needsLyrics, recentLyrics } from "@/lib/library";
 import { LibrarySearch } from "@/components/LibrarySearch";
+import { syncHref } from "@/lib/site";
 
 export default function Home() {
   return (
@@ -100,13 +101,7 @@ async function Needs() {
         <Shelf
           items={items.map((n) => ({
             key: n.id,
-            // The video datlyrics played opens straight in the editor; without one, the search is prefilled.
-            href: `/sync?${new URLSearchParams({
-              ...(n.videoId ? { v: n.videoId } : { q: `${n.artistName} ${n.trackName}` }),
-              track: n.trackName,
-              artist: n.artistName,
-              ...(n.albumName && { album: n.albumName }),
-            })}`,
+            href: syncHref(n),
             art: n.artworkUrl,
             title: n.trackName,
             artist: n.artistName,
